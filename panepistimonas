@@ -1,0 +1,64 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv1D, Flatten
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
+import requests
+
+# Φόρτωση δεδομένων από το URL
+url = "https://github.com/kdemertzis/EKPA/raw/main/Data/pcap_data.csv"
+data = pd.read_csv(url)
+
+# Εξετάζουμε τα δεδομένα
+print(data.head())
+
+# Προετοιμασία των δεδομένων
+# Διαχωρισμός των χαρακτηριστικών (X) και του στόχου (y)
+X = data.drop('label', axis=1).values  # Υποθέτουμε ότι η στήλη 'label' είναι ο στόχος
+y = data['label'].values
+
+# Κανονικοποίηση των δεδομένων
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Διαχωρισμός των δεδομένων σε σύνολα εκπαίδευσης και δοκιμής
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# Δημιουργία του μοντέλου
+model = Sequential()
+
+# Προσθήκη Conv1D layer (Αν τα δεδομένα είναι σειρές)
+model.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], 1)))
+model.add(Flatten())  # Για να γίνει flat η έξοδος από το Conv1D layer
+
+# Προσθήκη Dense layer
+model.add(Dense(64, activation='relu'))
+
+# Εξόδου Layer
+model.add(Dense(1, activation='sigmoid'))  # Αν έχουμε δυαδική ταξινόμηση (κανονικό/επίθεση)
+
+# Συγκρότηση του μοντέλου
+model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
+
+# Σχηματισμός των δεδομένων για να είναι συμβατά με το Conv1D
+X_train = np.expand_dims(X_train, axis=2)  # Προσθήκη επιπλέον διάστασης για το Conv1D
+X_test = np.expand_dims(X_test, axis=2)
+
+# Εκπαίδευση του μοντέλου
+early_stopping = EarlyStopping(monitor='val_loss', patience=5)
+history = model.fit(X_train, y_train, epochs=50, batch_size=64, validation_data=(X_test, y_test), callbacks=[early_stopping])
+
+# Αξιολόγηση του μοντέλου
+test_loss, test_accuracy = model.evaluate(X_test, y_test)
+print(f"Test Loss: {test_loss}")
+print(f"Test Accuracy: {test_accuracy}")
+
+# Προβλέψεις (π.χ. ανίχνευση επιθέσεων)
+predictions = model.predict(X_test)
+
+# Για να δούμε κάποια παραδείγματα των προβλέψεων:
+print("Προβλέψεις για τα πρώτα 5 δείγματα:", predictions[:5])
+
